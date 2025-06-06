@@ -1,0 +1,229 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google AI Chat</title>
+    <!-- The CSS is unchanged, so I'm omitting it for brevity. Copy the CSS from the previous answer. -->
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #e5ddd5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .chat-container { width: 100%; max-width: 800px; height: 90vh; background-color: #fff; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
+        header { background-color: #075E54; color: white; padding: 1rem; text-align: center; font-size: 1.2rem; font-weight: 500; }
+        .chat-history { flex-grow: 1; padding: 1.5rem; overflow-y: auto; display: flex; flex-direction: column; background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARMAAAARCAYAAAA/I3yFAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAABMSURBVHja7cEBDQAAAMKg909tDwcUAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAe5gZlAAGEr3hHAAAAAElFTkSuQmCC'); }
+        .chat-bubble { max-width: 70%; padding: 10px 15px; border-radius: 18px; margin-bottom: 10px; line-height: 1.5; position: relative; }
+        .chat-bubble.user { background-color: #DCF8C6; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .chat-bubble.bot { background-color: #FFFFFF; align-self: flex-start; border: 1px solid #f0f0f0; border-bottom-left-radius: 4px; }
+        .chat-bubble.interim-user { background-color: #e9f5e2; color: #888; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .chat-input-area { display: flex; align-items: center; padding: 10px; border-top: 1px solid #ddd; background-color: #f0f0f0; }
+        #ttsText { flex-grow: 1; border: none; padding: 12px 15px; border-radius: 25px; font-size: 16px; margin: 0 10px; resize: none; height: 24px; max-height: 100px; overflow-y: auto; }
+        #ttsText:focus { outline: none; }
+        .chat-button { border: none; background-color: #128C7E; color: white; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: background-color 0.2s; }
+        .chat-button:hover { background-color: #075E54; }
+        #recordButton.recording { background-color: #d93025; }
+        #recordButton.recording:hover { background-color: #b0261c; }
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <header>Google AI Voice Chat</header>
+        <div id="chat-history" class="chat-history">
+            <div class="chat-bubble bot">Hello! Click the microphone and speak. I will listen and respond.</div>
+        </div>
+        <div class="chat-input-area">
+            <button id="recordButton" class="chat-button">🎙️</button>
+            <textarea id="ttsText" placeholder="Or type a message to hear it..." rows="1"></textarea>
+            <button id="speakButton" class="chat-button">➤</button>
+        </div>
+    </div>
+
+    <script>
+        // --- All the variable declarations and helper functions are the same ---
+        const recordButton = document.getElementById('recordButton');
+        const speakButton = document.getElementById('speakButton');
+        const ttsTextArea = document.getElementById('ttsText');
+        const chatHistory = document.getElementById('chat-history');
+
+        let isRecording = false;
+        let socket;
+        let audioContext;
+        let processor;
+
+        // This will hold the DOM element for the current in-progress user transcript
+        let currentUserBubble = null;
+        const SAMPLE_RATE = 16000;
+
+        function addMessageToChat(text, sender) {
+            const bubble = document.createElement('div');
+            bubble.classList.add('chat-bubble', sender);
+            bubble.textContent = text;
+            chatHistory.appendChild(bubble);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            return bubble;
+        }
+
+        // --- STT Logic ---
+        recordButton.addEventListener('click', async () => {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                // Disable text input while recording for better UX
+                ttsTextArea.disabled = true;
+                speakButton.disabled = true;
+                await startRecording();
+            }
+        });
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+                const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+                socket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/stt`);
+
+                socket.onopen = () => {
+                    console.log("WebSocket STT connection established.");
+                    recordButton.classList.add('recording');
+                    isRecording = true;
+                    currentUserBubble = addMessageToChat("Listening...", "interim-user");
+                    processAudio(stream);
+                };
+
+                // THIS IS THE UPDATED PART
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.is_final) {
+                        // --- This is the new conversational response logic ----
+                        // 1. Finalize the user's speech bubble
+                        currentUserBubble.textContent = data.user_text;
+                        currentUserBubble.classList.remove('interim-user');
+                        currentUserBubble.classList.add('user');
+                        currentUserBubble = null;
+
+                        // 2. Add the bot's text response
+                        addMessageToChat(data.bot_response_text, 'bot');
+
+                        // 3. Play the bot's audio response
+                        if (data.bot_audio_b64) {
+                            const audio = new Audio("data:audio/mp3;base64," + data.bot_audio_b64);
+                            audio.play();
+                        }
+                    } else {
+                        // This is an interim result for the user's speech
+                        currentUserBubble.textContent = data.text;
+                    }
+                };
+
+                socket.onclose = () => {
+                    console.log("WebSocket STT connection closed.");
+                    stopRecordingCleanup();
+                };
+
+                socket.onerror = (error) => {
+                    console.error("WebSocket STT error:", error);
+                    alert("A WebSocket error occurred. See console.");
+                    stopRecordingCleanup();
+                };
+
+            } catch (error) {
+                console.error("Error accessing microphone:", error);
+                alert("Could not access the microphone. Please grant permission.");
+            }
+        }
+
+        function stopRecording() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+        }
+
+        function stopRecordingCleanup() {
+            if (processor) { processor.disconnect(); processor = null; }
+            if (audioContext) { audioContext.close(); audioContext = null; }
+            if (currentUserBubble) {
+                if (currentUserBubble.textContent === "Listening...") {
+                    currentUserBubble.remove();
+                } else {
+                    currentUserBubble.classList.remove('interim-user');
+                    currentUserBubble.classList.add('user');
+                }
+                currentUserBubble = null;
+            }
+            recordButton.classList.remove('recording');
+            isRecording = false;
+
+            // Re-enable text input after recording is done
+            ttsTextArea.disabled = false;
+            speakButton.disabled = false;
+        }
+
+        function floatTo16BitPCM(input) {
+            const output = new Int16Array(input.length);
+            for (let i = 0; i < input.length; i++) {
+                let s = Math.max(-1, Math.min(1, input[i]));
+                output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            return output.buffer;
+        }
+
+        // --- The processAudio function is unchanged ---
+        function processAudio(stream) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+            const source = audioContext.createMediaStreamSource(stream);
+            const bufferSize = 4096;
+            processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+            processor.onaudioprocess = (e) => {
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(floatTo16BitPCM(e.inputBuffer.getChannelData(0)));
+                }
+            };
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+        }
+
+        // --- Original TTS Logic (for text input) is also unchanged ---
+        async function handleTTS() {
+            const text = ttsTextArea.value.trim();
+            if (!text) return;
+
+            addMessageToChat(text, 'bot');
+            ttsTextArea.value = '';
+            speakButton.disabled = true;
+
+            try {
+                const response = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text }),
+                });
+
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+                const data = await response.json();
+                const audio = new Audio("data:audio/mp3;base64," + data.audio_content);
+                audio.play();
+                audio.onended = () => { speakButton.disabled = false; };
+            } catch (error) {
+                console.error("Error during TTS request:", error);
+                addMessageToChat("Sorry, I couldn't generate the audio.", 'bot');
+                speakButton.disabled = false;
+            }
+        }
+
+        speakButton.addEventListener('click', handleTTS);
+        ttsTextArea.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                handleTTS();
+            }
+        });
+        ttsTextArea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+
+    </script>
+</body>
+</html>
