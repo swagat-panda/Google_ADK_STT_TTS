@@ -1,6 +1,6 @@
-# Google Assistant Device Kit (ADK) with Speech-to-Text and Text-to-Speech
+# Google Agent development kit(ADK) with Speech-to-Text and Text-to-Speech
 
-This project implements a Google Assistant Device Kit (ADK) application with integrated speech-to-text (STT) and text-to-speech (TTS) capabilities. It provides a complete solution for voice interaction using Google's Assistant SDK.
+This project implements a Google Development Kit (ADK) application with integrated speech-to-text (STT) and text-to-speech (TTS) capabilities. It provides a complete solution for voice interaction using Google's SDK.
 
 ## Features
 
