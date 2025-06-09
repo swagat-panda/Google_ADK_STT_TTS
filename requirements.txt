@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+google-cloud-speech
+google-cloud-texttospeech
+google-adk
+python-dotenv
+jinja2
