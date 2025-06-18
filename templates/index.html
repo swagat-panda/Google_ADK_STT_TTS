@@ -10,7 +10,7 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #e5ddd5; display: flex; justify-content: center; align-items: center; height: 100vh; }
         .chat-container { width: 100%; max-width: 800px; height: 90vh; background-color: #fff; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
         header { background-color: #075E54; color: white; padding: 1rem; text-align: center; font-size: 1.2rem; font-weight: 500; }
-        .chat-history { flex-grow: 1; padding: 1.5rem; overflow-y: auto; display: flex; flex-direction: column; background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARMAAAARCAYAAAA/I3yFAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAABMSURBVHja7cEBDQAAAMKg909tDwcUAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAe5gZlAAGEr3hHAAAAAElFTkSuQmCC'); }
+        .chat-history { flex-grow: 1; padding: 1.5rem; overflow-y: auto; display: flex; flex-direction: column; background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARMAAAARCAYAAAA/I3yFAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAABMSURBVHja7cEBDQAAAMKg909tDwcUAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAeAAAAAHAe5gZlAAGEr3hHAAAAAElFTkSuQmCC'); }
         .chat-bubble { max-width: 70%; padding: 10px 15px; border-radius: 18px; margin-bottom: 10px; line-height: 1.5; position: relative; }
         .chat-bubble.user { background-color: #DCF8C6; align-self: flex-end; border-bottom-right-radius: 4px; }
         .chat-bubble.bot { background-color: #FFFFFF; align-self: flex-start; border: 1px solid #f0f0f0; border-bottom-left-radius: 4px; }
@@ -52,8 +52,6 @@
 
         // This will hold the DOM element for the current in-progress user transcript
         let currentUserBubble = null;
-        // This will hold the DOM element for the current in-progress agent response
-        let currentAgentBubble = null;
         const SAMPLE_RATE = 16000;
 
         function addMessageToChat(text, sender) {
@@ -96,46 +94,25 @@
                 socket.onmessage = (event) => {
                     const data = JSON.parse(event.data);
 
-                    if (data.is_user) {
-                        // Handle user messages
-                        if (data.is_final) {
-                            // Final user message
-                            if (currentUserBubble) {
-                                currentUserBubble.textContent = data.user_text;
-                                currentUserBubble.classList.remove('interim-user');
-                                currentUserBubble.classList.add('user');
-                                currentUserBubble = null;
-                            }
-                        } else {
-                            // Interim user message
-                            if (!currentUserBubble) {
-                                currentUserBubble = addMessageToChat(data.user_text, 'interim-user');
-                            } else {
-                                currentUserBubble.textContent = data.user_text;
-                            }
+                    if (data.is_final) {
+                        // --- This is the new conversational response logic ----
+                        // 1. Finalize the user's speech bubble
+                        currentUserBubble.textContent = data.user_text;
+                        currentUserBubble.classList.remove('interim-user');
+                        currentUserBubble.classList.add('user');
+                        currentUserBubble = null;
+
+                        // 2. Add the bot's text response
+                        addMessageToChat(data.bot_response_text, 'bot');
+
+                        // 3. Play the bot's audio response
+                        if (data.bot_audio_b64) {
+                            const audio = new Audio("data:audio/mp3;base64," + data.bot_audio_b64);
+                            audio.play();
                         }
                     } else {
-                        // Handle agent messages
-                        if (data.is_final) {
-                            // Final agent message with audio
-                            if (currentAgentBubble) {
-                                currentAgentBubble.textContent = data.bot_response_text;
-                            } else {
-                                addMessageToChat(data.bot_response_text, 'bot');
-                            }
-                            if (data.bot_audio_b64) {
-                                const audio = new Audio("data:audio/mp3;base64," + data.bot_audio_b64);
-                                audio.play();
-                            }
-                            currentAgentBubble = null;
-                        } else {
-                            // Streaming agent message
-                            if (!currentAgentBubble) {
-                                currentAgentBubble = addMessageToChat(data.bot_response_text, 'bot');
-                            } else {
-                                currentAgentBubble.textContent = data.bot_response_text;
-                            }
-                        }
+                        // This is an interim result for the user's speech
+                        currentUserBubble.textContent = data.text;
                     }
                 };
 
