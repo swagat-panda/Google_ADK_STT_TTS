@@ -15,6 +15,8 @@ from CustomerSupportAgent.agent import root_agent
 from dotenv import load_dotenv
 
 import uvicorn
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "testvertexbot-1a0b45623d70.json"
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,6 +43,12 @@ STREAMING_CONFIG = speech.StreamingRecognitionConfig(
     interim_results=True,
 )
 
+runner = None
+
+@app.on_event("startup")
+async def startup_event():
+    global runner
+    runner = await start_agent_session("123456")
 
 # --- HTML Frontend Endpoint ---
 @app.get("/", response_class=HTMLResponse)
@@ -78,16 +86,21 @@ async def text_to_speech(request: Request):
     audio_base64 = await synthesize_speech_for_response(text_to_synthesize)
     return {"audio_content": audio_base64}
 
-def start_agent_session(session_id, is_audio=False):
+async def start_agent_session(session_id, is_audio=False):
     """Starts an agent session"""
-
-    # Create a Session
-    session = session_service.create_session(
+    logger.info(f"Creating session with app_name={APP_NAME}, user_id={session_id}, session_id={session_id}")
+    session = await session_service.create_session(
         app_name=APP_NAME,
         user_id=session_id,
         session_id=session_id,
     )
-
+    logger.info(f"Session created: {session}")
+    # Try to retrieve immediately after creation
+    try:
+        retrieved_session = await session_service.get_session(app_name=APP_NAME, user_id=session_id, session_id=session_id)
+        logger.info(f"Session retrieved right after creation: {retrieved_session}")
+    except Exception as e:
+        logger.error(f"Error retrieving session right after creation: {e}")
     # Create a Runner
     runner = Runner(
         app_name=APP_NAME,
@@ -96,17 +109,18 @@ def start_agent_session(session_id, is_audio=False):
     )
     return runner
 
-def call_agent(user_input_topic,SESSION_ID,runner):
+async def call_agent(user_input_topic, SESSION_ID, runner):
     """
     Sends a new topic to the agent (overwriting the initial one if needed)
     and runs the workflow.
     """
-    current_session = session_service.get_session(app_name=APP_NAME,
+    logger.info(f"Retrieving session with app_name={APP_NAME}, user_id={SESSION_ID}, session_id={SESSION_ID}")
+    current_session = await session_service.get_session(app_name=APP_NAME,
                                                   user_id=SESSION_ID,
                                                   session_id=SESSION_ID)
     if not current_session:
         logger.error("Session not found!")
-        return
+        return "Sorry, I could not find your session. Please try again."
 
     current_session.state["user_input"] = user_input_topic
     logger.info(f"Updated session state topic to: {user_input_topic}")
@@ -123,7 +137,7 @@ def call_agent(user_input_topic,SESSION_ID,runner):
     print("\n--- Agent Interaction Result ---")
     print("Agent Final Response: ", final_response)
 
-    final_session = session_service.get_session(app_name=APP_NAME,
+    final_session = await session_service.get_session(app_name=APP_NAME,
                                                 user_id=SESSION_ID,
                                                 session_id=SESSION_ID)
     print("Final Session State:")
@@ -131,8 +145,6 @@ def call_agent(user_input_topic,SESSION_ID,runner):
     print(json.dumps(final_session.state, indent=2))
     print("-------------------------------\n")
     return final_response
-
-runner=start_agent_session("123456")
 
 # --- Speech-to-Text (STT) WebSocket Endpoint with Conversational Logic ---
 @app.websocket("/ws/stt")
@@ -183,7 +195,7 @@ async def websocket_stt_endpoint(websocket: WebSocket):
                     # --- THIS IS THE CORE CONVERSATIONAL LOGIC ---
                     # 1. User's final speech is ready.
                     user_final_text = transcript
-                    bot_response_text = call_agent(user_final_text, "123456", runner)
+                    bot_response_text = await call_agent(user_final_text, "123456", runner)
                     # 2. Perform your internal process to get a response.
                     #    (Here we simulate it with a simple echo).
                     #    In a real app, you'd call a database, an LLM, etc.
