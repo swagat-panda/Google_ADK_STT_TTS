@@ -15,12 +15,12 @@ from google.genai import types
 # from verification.agent import root_agent
 from dotenv import load_dotenv
 from vertexai import agent_engines
-resource_id="7998507287419289600"
+resource_id="<your agent engine resource id>"
 user_id=uuid.uuid4().int
 
 import uvicorn
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "testvertexbot-1a0b45623d70.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "<your google application credentials file>"
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

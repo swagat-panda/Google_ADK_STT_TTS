@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 import uvicorn
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "testvertexbot-1a0b45623d70.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "<your google application credentials file>"
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
