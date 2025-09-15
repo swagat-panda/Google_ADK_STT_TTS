@@ -220,6 +220,9 @@ async def websocket_stt_endpoint(websocket: WebSocket):
         Continues handling multiple user turns until Twilio closes the WebSocket.
         """
         nonlocal stream_sid, response_start_timestamp_twilio
+        # Track last processed final transcript to avoid duplicate agent calls
+        last_final_transcript = ""
+        last_final_media_ts_ms = -1
 
         async def audio_generator():
             """Async generator feeding Google STT with initial config then audio frames."""
@@ -243,9 +246,27 @@ async def websocket_stt_endpoint(websocket: WebSocket):
                 if not result.alternatives:
                     continue
 
-                transcript = result.alternatives[0].transcript
+                transcript = (result.alternatives[0].transcript or "").strip()
 
                 if result.is_final:
+                    # Ignore empty final transcripts
+                    if not transcript:
+                        logging.info("Final transcript was empty; skipping agent call.")
+                        continue
+                    # Debounce identical finals within 1.2s (likely STT duplicate); allow later repeats
+                    current_media_ts_ms = latest_media_timestamp or 0
+                    duplicate_within_window = (
+                        transcript == last_final_transcript and
+                        last_final_media_ts_ms >= 0 and
+                        (current_media_ts_ms - last_final_media_ts_ms) < 1200
+                    )
+                    if duplicate_within_window:
+                        logging.info("Duplicate final transcript within debounce window; skipping agent call.")
+                        continue
+                    # Record this final as processed
+                    last_final_transcript = transcript
+                    last_final_media_ts_ms = current_media_ts_ms
+
                     logging.info(f"Final transcript received: {transcript}")
 
                     # Send user's utterance to your agent and stream back the TTS response
@@ -291,9 +312,12 @@ async def websocket_stt_endpoint(websocket: WebSocket):
                                         bot_sent = await send_text_as_pcmu_frames(websocket, stream_sid, res)
                                         if bot_sent and not response_sent:
                                             response_sent = True
+                                            # Reset duplicate guard so the same user word later is treated as new
+                                            last_final_transcript = ""
+                                            last_final_media_ts_ms = -1
 
-                                else:
-                                    logging.warning("No 'text' field found in agent response parts")
+                                    else:
+                                        logging.warning("No 'text' field found in agent response parts")
                             else:
                                 logging.warning("Unexpected agent response structure")
 
