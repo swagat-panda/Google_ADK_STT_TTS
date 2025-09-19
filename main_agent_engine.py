@@ -15,10 +15,13 @@ from google.genai import types
 # from verification.agent import root_agent
 from dotenv import load_dotenv
 from vertexai import agent_engines
-resource_id="<provide your agent engine resource id>"
+resource_id="<your agent engine resource id>"
 user_id=uuid.uuid4().int
 
 import uvicorn
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "<your google application credentials file>"
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
