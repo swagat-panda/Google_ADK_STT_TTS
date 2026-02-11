@@ -1,0 +1,139 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: swagat-panda/google_adk_stt_tts
+    source: https://github.com/swagat-panda/google_adk_stt_tts
+    branch: main
+    commit: "9053aea6"
+    scope: [main.py, verification/agent.py, verification/prompt.py, verification/tools/verify_user.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T16:43:37Z'
+    url: https://a2as.org/certified/agents/swagat-panda/google_adk_stt_tts
+  signatures:
+    digest: sha256:rEWomlds7__i-vdFayjfA-e4ezaHI6tCpwC7f3jioWQ
+    key: ed25519:0IeRdvnh5PWRO-aE1g3-MCv3wWPGpzGI7Z2eOQJkBAQ
+    sig: ed25519:CHU8sMVe2FYCBSltuGtlu3uFGa0UlqDg4euoyddHTSzcEGPvouihbJKkn2pbM3NFfdWmz9fttSwE5_v4SRmoDg
+
+agents:
+  root_agent:
+    type: instance
+    models: [gemini-2.0-flash]
+    tools: [verifyUserDetails]
+    params:
+      name: verification
+      description: You are an AI assistant tasked with verifying user identity. Your goal is to collect the user's full name
+        and date of birth, and then use a specific tool to perform the verification.
+      instruction: ['System Prompt:', 'You are an AI assistant tasked with verifying user identity. Your goal is to collect
+          the user''s full name and date of birth, and then use a specific tool to perform the verification.', 'Follow these
+          instructions precisely:', 'Greet the User & State Purpose: Start by politely greeting the user and informing them
+          that you need to verify their identity by asking for their name and date of birth.', 'Ask for Full Name: First,
+          ask the user for their full name. Wait for their response.', 'Ask for Date of Birth: After receiving their name,
+          ask for their date of birth.', 'Confirm Collection (Optional but good practice): Briefly acknowledge you''ve received
+          both pieces of information. (e.g., "Thank you, I have your details.")', 'Tool Call: Once you have successfully collected
+          both the full name and the date of birth (in the correct format), you MUST immediately call the verifyUserDetails
+          tool. Pass the collected fullName and dateOfBirth as parameters to this tool.', 'Do Not Verify Manually: Do not
+          attempt to confirm or deny the user''s identity yourself. Simply collect the data and pass it to the tool. Await
+          the tool''s response to continue the conversation.', 'Tool Definition (for the verifyUserDetails tool):', '{', '"name":
+          "verifyUserDetails",', '"description": "Verifies a user''s identity by checking their provided full name and date
+          of birth against a secure database. Returns a verification status and, if successful, user ID or relevant details.",',
+        '"parameters": {', '"type": "object",', '"properties": {', '"fullName": {', '"type": "string",', '"description": "The
+          user''s full name as provided by them."', '},', '"dateOfBirth": {', '"type": "string",', '"description": "The user''s
+          date of birth in YYYY-MM-DD format."', '}', '},', '"required": ["fullName", "dateOfBirth"]', '}', '}', 'Don''t ask
+          user to provide dateOfBirth in YYYY-MM-DD format, accept what ever user provide and reformat to the desired format
+          for tool call.']
+      output_key: verification
+
+models:
+  gemini-2.0-flash:
+    type: literal
+    agents: [root_agent]
+
+tools:
+  verifyUserDetails:
+    type: function
+    agents: [root_agent]
+    params:
+      description: |-
+        Verifies a user's identity by checking their provided full name and date of birth against a secure database. Returns a verification status and, if successful, user ID or relevant details.
+        Args:
+            fullName:
+            dateOfBirth:
+            tool_context:
+
+        Returns:
+        {Status:Boolean,user_id:str}
+
+imports:
+  Agent: google.adk.agents.Agent
+  agent: agent
+  asyncio: asyncio
+  base64: base64
+  FastAPI: fastapi.FastAPI
+  FunctionTool: google.adk.tools.FunctionTool
+  HTMLResponse: fastapi.responses.HTMLResponse
+  InMemorySessionService: google.adk.sessions.in_memory_session_service.InMemorySessionService
+  Jinja2Templates: fastapi.templating.Jinja2Templates
+  load_dotenv: dotenv.load_dotenv
+  logging: logging
+  os: os
+  PROMPT: verification.prompt.PROMPT
+  Request: fastapi.Request
+  root_agent: verification.agent.root_agent
+  Runner: google.adk.runners.Runner
+  speech: google.cloud.speech
+  texttospeech: google.cloud.texttospeech
+  ToolContext: google.adk.tools.ToolContext
+  types: google.genai.types
+  uvicorn: uvicorn
+  verifyUserDetails: verification.tools.verify_user.verifyUserDetails
+  WebSocket: fastapi.WebSocket
+  WebSocketDisconnect: fastapi.WebSocketDisconnect
+
+functions:
+  audio_generator:
+    type: async
+    module: main
+  call_agent:
+    type: async
+    module: main
+    args: [user_input_topic, SESSION_ID, runner]
+  get:
+    type: async
+    module: main
+    args: [request]
+  get_audio_from_client:
+    type: async
+    module: main
+  run_google_stt:
+    type: async
+    module: main
+  start_agent_session:
+    type: async
+    module: main
+    args: [session_id, is_audio]
+  synthesize_speech_for_response:
+    type: async
+    module: main
+    args: [text]
+    params:
+      returns: str
+  text_to_speech:
+    type: async
+    module: main
+    args: [request]
+  verifyUserDetails:
+    type: sync
+    module: verification.tools.verify_user
+    args: [fullName, dateOfBirth, tool_context]
+  websocket_stt_endpoint:
+    type: async
+    module: main
+    args: [websocket]
+
+variables:
+  GOOGLE_APPLICATION_CREDENTIALS:
+    type: env
+    params:
+      caller: [os.environ]
